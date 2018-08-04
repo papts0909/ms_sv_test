@@ -1,0 +1,145 @@
+<?php
+
+namespace Core\Traits;
+
+use Core\Responders\ServiceResponse;
+use Illuminate\Http\Response;
+use Illuminate\Support\Facades\DB;
+
+use GuzzleHttp\Exception\ServerException;
+use GuzzleHttp\Exception\ClientException;
+use GuzzleHttp\Exception\RequestException;
+use GuzzleHttp\Exception\BadResponseException;
+
+trait Helpers
+{
+    /**
+     * Gửi params tới đường dẫn api
+     * @author luffy 29.5.2018
+     *
+     * @param $method   : Phương thức GET, POST, PUT, ...
+     * @param $params   : Các params sẽ gửi lên
+     * @param $uri      : Đường dẫn uri - api đi đến
+     */
+    private function sendParamsToApi($method, $form_params, $uri)
+    {
+        // dữ liệu trả về
+        $result = new ServiceResponse();
+        try
+        {
+            // Tùy theo phương thức mà key params truyền lên thay đổi theo
+            $keymethod = null;
+            switch ($method) {
+                case "GET":
+                    $keymethod = "query";
+                    break;
+                case "POST":
+                    $keymethod = "form_params";
+                    break;
+                default:
+                    $keymethod = "form_params";
+            }
+            // Khởi tạo guzzle
+            $client = app("guzzleClient");
+            // Tiến hành gửi params lên
+            $res = $client->request($method, $uri, [
+                $keymethod => $form_params,
+            ]);
+
+            $headers = $res->getHeaders();
+            $data = $res->getBody()->getContents();
+
+            try {
+                $data = json_decode($data, true);
+            } catch (\Exception $ex) {
+
+                // add lỗi vào kết quả trả về
+                return $this->addError($result, $ex->getMessage());
+            }
+            // Trả kết quả về
+            $result->setData([
+                "headers" => $headers,
+                "data" => $data,
+            ]);
+
+            return $result;
+
+        } catch (ServerException $ex) {
+
+            // add lỗi vào kết quả trả về
+            $result->addException($ex->getResponse()->getBody()->getContents(), $ex->getCode());
+            $result->setStatus(ServiceResponse::STATUS_ERROR);
+            $result->setStatusCode(500);
+
+            // trả về cho controller
+            return $result;
+        } catch (ClientException $ex) {
+
+            // add lỗi vào kết quả trả về
+            $result->addException($ex->getMessage(), $ex->getCode());
+            $result->setStatus(ServiceResponse::STATUS_ERROR);
+            $result->setStatusCode(500);
+
+            // trả về cho controller
+            return $result;
+        } catch (RequestException $ex) {
+
+            // add lỗi vào kết quả trả về
+            $result->addException($ex->getMessage(), $ex->getCode());
+            $result->setStatus(ServiceResponse::STATUS_ERROR);
+            $result->setStatusCode(500);
+
+            // trả về cho controller
+            return $result;
+        } catch (BadResponseException $ex) {
+            // add lỗi vào kết quả trả về
+            $result->addException($ex->getMessage(), $ex->getCode());
+            $result->setStatus(ServiceResponse::STATUS_ERROR);
+            $result->setStatusCode(500);
+
+            // trả về cho controller
+            return $result;
+        } catch (\Exception $ex) {
+            // add lỗi vào kết quả trả về
+            $result->addException($ex->getMessage(), $ex->getCode());
+            $result->setStatus(ServiceResponse::STATUS_ERROR);
+            $result->setStatusCode(500);
+
+            // trả về cho controller
+            return $result;
+        }
+    }
+
+    /**
+     * Hàm trả về response theo dạng chuẩn
+     * @author luffy 30.5.2018
+     *
+     * @param [contens] : Nội dung trả về
+     * @param [statusCode] : Status code - 200 - 500
+     */
+    private function returnResponseStandard($contents, $statusCode)
+    {
+        $contents['services'] = 'customer';
+        return (new Response(json_encode($contents), $statusCode))
+            ->header('Content-Type', 'application/json');
+    }
+
+    /**
+     * Hàm tiến hàm thêm lỗi phát sinh
+     * @author luffy 28.5.2018
+     *
+     * @param [result] : $result = new ServiceResponse();
+     * @param [errors] : Mảng danh sách các lỗi
+     */
+    private function addError($result, $errors, $statusCode = null)
+    {
+        // add lỗi vào kết quả trả về
+        $result->addException($errors[0], 500);
+        $result->setStatus(ServiceResponse::STATUS_ERROR);
+        // Nếu có status code thì mới tiến hành set
+        if ($statusCode) {
+            $result->setStatusCode(500);
+        }
+        return $result;
+    }
+}
